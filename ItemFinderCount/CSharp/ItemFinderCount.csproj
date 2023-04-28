@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="U:\dev\github\Barotrauma\Barotrauma\BarotraumaClient\WindowsClient.csproj" />
+    <ProjectReference Include="U:\dev\github\Barotrauma\Barotrauma\BarotraumaClient\WindowsServer.csproj" />
+    <ProjectReference Include="U:\dev\github\Barotrauma\Libraries\XNATypes\XNATypes.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Lib.Harmony" Version="2.2.2" />
+  </ItemGroup>
+
+</Project>
