@@ -22,6 +22,7 @@ DebugConsole = LuaUserData.CreateStatic("Barotrauma.DebugConsole")
 CancelConsole = true
 CancelUpdateSlotInput = false
 SwitchToSlot = -1
+ConsoleHookIdentifier = nil
 
 
 Hook.Patch("Barotrauma.Character", "ControlLocalPlayer", function (instance, ptable)
@@ -94,6 +95,10 @@ function CheckFunctionKeys()
 end
 
 function UpdateUI_CharacterIndexPrefixes()
+    if not AddNumberPrefixes then
+        return
+    end
+
     local char_frames = Game.GameSession.CrewManager.crewList
         .GetChild(Int32(0)).GetChild(Int32(0))
 
@@ -118,14 +123,14 @@ function ChangeCharacter()
     local idx = Int32(SwitchToSlot)
     SwitchToSlot = -1
 
-    local character = Game.GameSession.CrewManager.crewList.Content.GetChild(idx)
-    if character == nil or character.UserData.IsPlayer then
+    local characterFrame = Game.GameSession.CrewManager.crewList.Content.GetChild(idx)
+    if characterFrame == nil or characterFrame.UserData.IsPlayer then
         return
     end
-    PerformCharacterChange(character.UserData)
-    if AddNumberPrefixes then
-        UpdateUI_CharacterIndexPrefixes()
-    end
+    local character = characterFrame.UserData
+
+    print("switching to " .. tostring(character.Name) .. " (" .. tostring(idx) .. ")" )
+    PerformCharacterChange(character)
 end
 
 function PerformCharacterChange(character)
@@ -135,20 +140,62 @@ function PerformCharacterChange(character)
         if character.IsDead or character.IsUnconscious or not character.IsOnPlayerTeam then
             return
         end
-        Game.Client.SendConsoleCommand("setclientcharacter \"" .. Game.Client.Name .. "\" \"" .. character.Name .. "\"")
+        local command = "setclientcharacter \"" .. Game.Client.Name .. "\" \"" .. character.Name .. "\""
+        print(command)
+        Game.Client.SendConsoleCommand(command)
     end
 end
 
+
 if (UseFunctionKeys) then
-    Hook.Patch("Barotrauma.DebugConsole", "Toggle", function (isntance, ptable)
-        if GUI.InputBlockingMenuOpen then
+    Hook.Patch("Barotrauma.DebugConsole", "Toggle", function (instance, ptable)
+        if GUI.InputBlockingMenuOpen or LuaUserData.TypeOf(Screen.Selected) ~= "Barotrauma.GameScreen" then
             return
         end
+
         if CancelConsole then
             ptable.PreventExecution = true
         end
         CancelConsole = true
     end, Hook.HookMethodType.Before)
+
+    Hook.Patch("Barotrauma.DebugConsole", "Toggle", function (instance, ptable)        
+        if DebugConsole.IsOpen then
+            AddConsoleHook()
+        else
+            RemoveConsoleHook()
+        end
+    end, Hook.HookMethodType.After)
+
+    Hook.Patch("Barotrauma.SubEditorScreen", "Update", { "System.Single" }, function(instance, ptable)
+        if PlayerInput.KeyHit(Keys.F11) then
+            CancelConsole = false
+            DebugConsole.Toggle()
+        end
+    end, Hook.HookMethodType.After)
+
+    function OnConsoleUpdate()
+        if PlayerInput.KeyHit(Keys.F11) then
+            CancelConsole = false
+            DebugConsole.Toggle()
+        end
+    end
+    
+    function AddConsoleHook()
+        if ConsoleHookIdentifier ~= nil then
+            return
+        end
+        ConsoleHookIdentifier = Hook.Patch("Barotrauma.DebugConsole", "Update", OnConsoleUpdate, Hook.HookMethodType.After)
+    end
+
+    function RemoveConsoleHook()
+        if ConsoleHookIdentifier == nil then
+            return
+        end
+
+        Hook.RemovePatch(ConsoleHookIdentifier, "Barotrauma.DebugConsole", "Update", Hook.HookMethodType.After)
+        ConsoleHookIdentifier = nil
+    end
 end
 
 if (UseAltPlusDigits) then
@@ -165,31 +212,45 @@ if (AddNumberPrefixes) then
     Hook.Patch("Barotrauma.CrewManager", "AddCharacterToCrewList", {"Barotrauma.Character"}, function(instance,ptable)
         UpdateUI_CharacterIndexPrefixes()
     end, Hook.HookMethodType.After)
+
     Hook.Patch("Barotrauma.CrewManager", "UpdateCrewListIndices", function(instance,ptable)
+        UpdateUI_CharacterIndexPrefixes()
+    end, Hook.HookMethodType.After)
+
+    Hook.Patch("Barotrauma.CrewManager", "CharacterClicked", { "Barotrauma.GUIComponent", "System.Object" }, function (instance, ptable)
         UpdateUI_CharacterIndexPrefixes()
     end, Hook.HookMethodType.After)
 end
 
-if EnableInMultiplayer and not Game.GameSession.CrewManager.IsSinglePlayer then
-    Hook.Patch("Barotrauma.CrewManager", "OnCrewListRearranged", {
-        "Barotrauma.GUIListBox", "System.Object"
-    },
-    function (instance, ptable)
-        local character = ptable["draggedElementData"]
-        local crewList = ptable["crewList"]
-    
-        if crewList ~= instance.crewList then
-            return
-        end
-    
-        if instance.IsSinglePlayer or character.IsRemotePlayer then
-            return
-        end
-    
-        if character.IsDead or character.IsUnconscious or not character.IsOnPlayerTeam then
-            return
-        end
-    
-        Game.Client.SendConsoleCommand("setclientcharacter \"" .. Game.Client.Name .. "\" \"" .. character.Name .. "\"")
-    end, Hook.HookMethodType.After)
+if(EnableInMultiplayer) then
+    Hook.Patch("Barotrauma.Networking.GameClient", "set_Character", function (instance, ptable)
+        UpdateUI_CharacterIndexPrefixes()
+    end, Hook.HookMethodType.After);
 end
+
+Hook.Patch("Barotrauma.CrewManager", "OnCrewListRearranged", {
+    "Barotrauma.GUIListBox", "System.Object"
+},
+function (instance, ptable)
+    UpdateUI_CharacterIndexPrefixes()
+    local crewList = ptable["crewList"]
+
+    if not EnableInMultiplayer or instance.IsSinglePlayer or crewList.HasDraggedElementIndexChanged then
+        return
+    end
+    local character = ptable["draggedElementData"]
+
+    if crewList ~= instance.crewList then
+        return
+    end
+
+    if instance.IsSinglePlayer or character.IsRemotePlayer then
+        return
+    end
+
+    if character.IsDead or character.IsUnconscious or not character.IsOnPlayerTeam then
+        return
+    end
+
+    PerformCharacterChange(character)
+end, Hook.HookMethodType.After)
