@@ -125,21 +125,14 @@ namespace ItemFinderCount {
             var listBox = MiniMapInstance.GetPrivateField<MiniMap, GUIComponent>("searchAutoComplete").GetChild<GUIListBox>();
             if (listBox?.Content == null) return;
 
-            foreach (var itemFrame in listBox.Content.Children)
+            var prefabsToSearch = listBox.Content.Children
+                .Where(itemFrame => itemFrame.Visible)
+                .Select(itemFrame => itemFrame.UserData)
+                .Cast<ItemPrefab>()
+                .ToList();
+            foreach (var result in SearchForPrefab(prefabsToSearch))
             {
-                if (itemFrame.Visible)
-                {
-                    if (itemFrame.FindChild(child => child.GetType() == typeof(GUITextBlock), true) is not GUITextBlock nameText)
-                    {
-                        Log("Cannot find GUITextBlock in itemFrame" + itemFrame.UserData);
-                        continue;
-                    }
-
-                    var prefab = (ItemPrefab)itemFrame.UserData;
-                    var results = SearchForPrefab(prefab);
-
-                    SearchCache[prefab.Identifier] = results;
-                }
+                SearchCache[result.PrefabId] = result;
             }
         }
         
@@ -198,57 +191,64 @@ namespace ItemFinderCount {
             }
         }
         
-        static SearchResults SearchForPrefab(ItemPrefab searchedPrefab)
+        static IReadOnlyCollection<SearchResults> SearchForPrefab(List<ItemPrefab> searchedPrefabs)
         {
-            if (MiniMapInstance == null) return new SearchResults();
-            
-            var total = 0;
-            var carried = 0;
-            var nonEmpty = 0;
+            if (MiniMapInstance == null) 
+                return ArraySegment<SearchResults>.Empty;
+
+            var dict = searchedPrefabs.ToDictionary(p => p.Identifier, p => new SearchResults(p.Identifier));
             
             foreach (var it in Item.ItemList)
             {
-                if (!ReflectionHelper.VisibleOnItemFinder(MiniMapInstance, it)) { continue; }
+                if (!dict.TryGetValue(it.Prefab.Identifier, out var searchedPrefab))
+                    continue;
                 
-                if (it.Prefab == searchedPrefab)
+                if (!ReflectionHelper.VisibleOnItemFinder(MiniMapInstance, it))
+                    continue;
+                
+                // ignore hidden items
+                if (it.FindParentInventory(inv => inv is ItemInventory { Owner: Item { HiddenInGame: true }}) is { }) { continue; }
+                
+                // count carried
+                var characterInventory = it.FindParentInventory(inv => inv is CharacterInventory) as CharacterInventory;
+                if (characterInventory != null)
                 {
-                    // ignore hidden items
-                    if (it.FindParentInventory(inv => inv is ItemInventory { Owner: Item { HiddenInGame: true }}) is { }) { continue; }
-                    
-                    // count carried
-                    var characterInventory = it.FindParentInventory(inv => inv is CharacterInventory) as CharacterInventory;
-                    if (characterInventory != null)
+                    if (characterInventory.Owner is Character character && character.IsOnPlayerTeam)
                     {
-                        if (characterInventory.Owner is Character character && character.IsOnPlayerTeam)
-                        {
-                            carried++;
-                        }
+                        searchedPrefab.Carried++;
                     }
-                    else
+                }
+                else
+                {
+                    searchedPrefab.OnSub++;
+                    if (it.ConditionPercentage > .5f)
                     {
-                        total++;
-                        if (it.ConditionPercentage > .5f)
-                        {
-                            nonEmpty++;
-                        }
+                        searchedPrefab.NonEmpty++;
                     }
                 }
             }
 
-            return new SearchResults(total, carried, nonEmpty);
+            return dict.Values;
         }
 
-        struct SearchResults
+        class SearchResults
         {
             public int OnSub;
             public int Carried;
             public int NonEmpty;
+            public Identifier PrefabId;
 
-            public SearchResults(int onSub, int carried, int nonEmpty)
+            public SearchResults(int onSub, int carried, int nonEmpty, string prefabId)
             {
                 this.OnSub = onSub;
                 this.Carried = carried;
                 this.NonEmpty = nonEmpty;
+                this.PrefabId = prefabId;
+            }
+
+            public SearchResults(Identifier prefabId)
+            {
+                this.PrefabId = prefabId;
             }
 
             public override string ToString()

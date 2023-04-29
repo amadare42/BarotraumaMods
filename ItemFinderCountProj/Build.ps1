@@ -1,5 +1,5 @@
 $Exclude = @('.idea','obj','bin','.ps1','ItemFinderCount.csproj','filelist.xml')
-$destination = "$PSScriptRoot\..\ItemFinderCount"
+$destination = "$PSScriptRoot\..\Item Finder Count"
 $notThese = ($Exclude | ForEach-Object { [Regex]::Escape($_) }) -join '|'
 
 Get-ChildItem -Path $PSScriptRoot -Recurse -File | 
