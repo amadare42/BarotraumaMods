@@ -17,7 +17,6 @@ namespace ItemFinderCount {
         private static readonly List<Action> RevertActions = new();
         
         // Domain
-        public static MiniMap? MiniMapInstance;
         private static Dictionary<Identifier, SearchResults> SearchCache = new();
 
         public ItemFinderCountMain()
@@ -30,7 +29,6 @@ namespace ItemFinderCount {
         public override void Stop()
         {
             this.HarmonyInstance.UnpatchAll("ItemFinderCount");
-            MiniMapInstance = null;
 
             foreach (var reventAction in RevertActions)
             {
@@ -51,18 +49,8 @@ namespace ItemFinderCount {
         {
             static void Postfix(MiniMap __instance)
             {
-                UpdateSearchCache();
+                UpdateSearchCache(__instance);
                 UpdateSearchItemFrames(__instance);
-            }
-        }
-        
-        [HarmonyPatch(typeof(Barotrauma.Items.Components.MiniMap))]
-        [HarmonyPatch("CreateGUI")]
-        public static class MiniMap_CreateGUI_Patch
-        {
-            static void Postfix(MiniMap __instance)
-            {
-                MiniMapInstance = __instance;
             }
         }
         
@@ -114,23 +102,18 @@ namespace ItemFinderCount {
             }
         }
 
-        private static void UpdateSearchCache()
+        private static void UpdateSearchCache(MiniMap miniMap)
         {
-            if (MiniMapInstance == null)
-            {
-                Log("UpdateSearchCache: MiniMapInstance is null");
+            var listBox = miniMap.GetPrivateField<MiniMap, GUIComponent>("searchAutoComplete").GetChild<GUIListBox>();
+            if (listBox?.Content == null) 
                 return;
-            }
-            
-            var listBox = MiniMapInstance.GetPrivateField<MiniMap, GUIComponent>("searchAutoComplete").GetChild<GUIListBox>();
-            if (listBox?.Content == null) return;
 
             var prefabsToSearch = listBox.Content.Children
                 .Where(itemFrame => itemFrame.Visible)
                 .Select(itemFrame => itemFrame.UserData)
                 .Cast<ItemPrefab>()
                 .ToList();
-            foreach (var result in SearchForPrefab(prefabsToSearch))
+            foreach (var result in SearchForPrefab(miniMap, prefabsToSearch))
             {
                 SearchCache[result.PrefabId] = result;
             }
@@ -143,16 +126,14 @@ namespace ItemFinderCount {
             
             foreach (var itemFrame in listBox.Content.Children)
             {
-                if (itemFrame.Visible)
+                if (!itemFrame.Visible) continue;
+                if (itemFrame.FindChild(child => child.GetType() == typeof(GUITextBlock), true) is not GUITextBlock nameText)
                 {
-                    if (itemFrame.FindChild(child => child.GetType() == typeof(GUITextBlock), true) is not GUITextBlock nameText)
-                    {
-                        Log("Cannot find GUITextBlock in itemFrame" + itemFrame.UserData);
-                        continue;
-                    }
-
-                    UpdateNameText(nameText);
+                    Log("Cannot find GUITextBlock in itemFrame" + itemFrame.UserData);
+                    continue;
                 }
+
+                UpdateNameText(nameText);
             }
         }
 
@@ -185,15 +166,19 @@ namespace ItemFinderCount {
                 var additionalWidth = nameText.Font.MeasureString(additionalString);
                 nameText.Text = ToolBox.LimitString(prefab.Name, nameText.Font, nameText.Rect.Width - (int)additionalWidth.X) + additionalString;
             }
-            else
+            else if (results.Carried > 0)
+            {
+                nameText.Text = ToolBox.LimitString($"{prefab.Name} ({results.Carried} carried)", nameText.Font, nameText.Rect.Width);
+            } 
+            else 
             {
                 nameText.Text = ToolBox.LimitString(prefab.Name, nameText.Font, nameText.Rect.Width);
             }
         }
         
-        static IReadOnlyCollection<SearchResults> SearchForPrefab(List<ItemPrefab> searchedPrefabs)
+        static IReadOnlyCollection<SearchResults> SearchForPrefab(MiniMap miniMap, List<ItemPrefab> searchedPrefabs)
         {
-            if (MiniMapInstance == null) 
+            if (miniMap == null) 
                 return ArraySegment<SearchResults>.Empty;
 
             var dict = searchedPrefabs.ToDictionary(p => p.Identifier, p => new SearchResults(p.Identifier));
@@ -203,7 +188,7 @@ namespace ItemFinderCount {
                 if (!dict.TryGetValue(it.Prefab.Identifier, out var searchedPrefab))
                     continue;
                 
-                if (!ReflectionHelper.VisibleOnItemFinder(MiniMapInstance, it))
+                if (!ReflectionHelper.VisibleOnItemFinder(miniMap, it))
                     continue;
                 
                 // ignore hidden items
