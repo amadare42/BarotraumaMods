@@ -40,12 +40,12 @@ namespace ImprovedTextBoxNavigation {
         // Internal
         private Harmony HarmonyInstance;
         private static readonly List<Action> RevertActions = new();
+        private const string HarmonyId = "amadare.ImprovedTextBoxNavigation";
 
         public ImprovedTextBoxNavigationMain()
         {
-            ClearLogs();
-            this.HarmonyInstance = new Harmony("ImprovedTextBoxNavigation");
-            this.HarmonyInstance.PatchAll(Assembly.GetExecutingAssembly());
+            this.HarmonyInstance = new Harmony(HarmonyId);
+            this.HarmonyInstance.PatchAll(typeof(ImprovedTextBoxNavigationMain));
         }
 
         [HarmonyPatch(typeof(Barotrauma.GUITextBox))]
@@ -456,10 +456,9 @@ namespace ImprovedTextBoxNavigation {
             return Math.Clamp(idx, 0, text.Length);
         }
         
-
         public override void Stop()
         {
-            this.HarmonyInstance.UnpatchAll("ItemFinderCount");
+            this.HarmonyInstance.UnpatchAll(HarmonyId);
 
             foreach (var reventAction in RevertActions)
             {

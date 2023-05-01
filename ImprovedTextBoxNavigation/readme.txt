@@ -10,3 +10,5 @@ IMPORTANT: Lua for Barotrauma client installation is required. Please consult wi
 LuaCs for Barotrauma is also required.
 
 Based on this PR: https://github.com/Regalis11/Barotrauma/pull/11690. When it will be merged, this mod will become obsolete.
+
+Source: https://github.com/amadare42/BarotraumaMods/tree/master/ImprovedTextBoxNavigation

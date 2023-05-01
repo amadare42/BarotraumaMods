@@ -15,20 +15,20 @@ namespace ItemFinderCount {
         // Internal
         private Harmony HarmonyInstance;
         private static readonly List<Action> RevertActions = new();
+        private const string PatchCategoryString = "amadare.ItemFinderCount";
         
         // Domain
         private static Dictionary<Identifier, SearchResults> SearchCache = new();
 
         public ItemFinderCountMain()
         {
-            Log("Inited");
-            this.HarmonyInstance = new Harmony("ItemFinderCount");
-            this.HarmonyInstance.PatchAll(Assembly.GetExecutingAssembly());
+            this.HarmonyInstance = new Harmony(PatchCategoryString);
+            this.HarmonyInstance.PatchAll(typeof(ItemFinderCountMain));
         }
 
         public override void Stop()
         {
-            this.HarmonyInstance.UnpatchAll("ItemFinderCount");
+            this.HarmonyInstance.UnpatchAll(PatchCategoryString);
 
             foreach (var reventAction in RevertActions)
             {
@@ -139,7 +139,7 @@ namespace ItemFinderCount {
 
         static void UpdateNameText(GUITextBlock nameText)
         {
-            var prefab = (ItemPrefab)nameText.UserData;
+            var prefab = (ItemPrefab)nameText?.UserData;
             if (prefab == null)
             {
                 return;
@@ -166,7 +166,7 @@ namespace ItemFinderCount {
                 var additionalWidth = nameText.Font.MeasureString(additionalString);
                 nameText.Text = ToolBox.LimitString(prefab.Name, nameText.Font, nameText.Rect.Width - (int)additionalWidth.X) + additionalString;
             }
-            else if (results.Carried > 0)
+            else if (results is { Carried: > 0 })
             {
                 nameText.Text = ToolBox.LimitString($"{prefab.Name} ({results.Carried} carried)", nameText.Font, nameText.Rect.Width);
             } 
