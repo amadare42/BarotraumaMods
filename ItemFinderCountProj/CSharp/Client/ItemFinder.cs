@@ -47,6 +47,7 @@ namespace ItemFinderCount {
         {
             this.HarmonyInstance = new Harmony(PatchCategoryString);
             this.HarmonyInstance.PatchAll();
+            Log("Initialized");
         }
 
         public void OnLoadCompleted()
