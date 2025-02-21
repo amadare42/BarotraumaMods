@@ -9,18 +9,20 @@ using Barotrauma;
 using HarmonyLib;
 using OpCodes = System.Reflection.Emit.OpCodes;
 using MiniMap = Barotrauma.Items.Components.MiniMap;
+
 // ReSharper disable UnusedType.Global
 
 [assembly: IgnoresAccessChecksTo("Barotrauma")]
-namespace ItemFinderCount {
-    
+
+namespace ItemFinderCount
+{
     class ItemFinderCountMain : IAssemblyPlugin
     {
         // Internal
         private Harmony HarmonyInstance;
         private static readonly List<Action> RevertActions = new();
         private const string PatchCategoryString = "amadare.ItemFinderCount";
-        
+
         // Domain
         private static Dictionary<Identifier, SearchResults> SearchCache = new();
 
@@ -36,18 +38,19 @@ namespace ItemFinderCount {
                 }
                 catch (Exception ex)
                 {
-                    Log("Error occured while executing ReventAction: " + ex);
+                    Log("Error occured while executing RevertAction: " + ex);
                 }
             }
+
             RevertActions.Clear();
             SearchCache.Clear();
-
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public void Initialize()
         {
             this.HarmonyInstance = new Harmony(PatchCategoryString);
             this.HarmonyInstance.PatchAll();
-            Log("Initialized");
         }
 
         public void OnLoadCompleted()
@@ -63,7 +66,7 @@ namespace ItemFinderCount {
             Stop();
         }
 
-        [HarmonyPatch(typeof(Barotrauma.Items.Components.MiniMap))]
+        [HarmonyPatch(typeof(MiniMap))]
         [HarmonyPatch("UpdateSearchTooltip")]
         public static class MiniMap_UpdateSearchTooltip_Patch
         {
@@ -74,7 +77,7 @@ namespace ItemFinderCount {
             }
         }
         
-        [HarmonyPatch(typeof(Barotrauma.Items.Components.MiniMap))]
+        [HarmonyPatch(typeof(MiniMap))]
         [HarmonyPatch("CreateItemFrame")]
         public static class MiniMap_CreateItemFrame_Patch
         {
@@ -86,25 +89,27 @@ namespace ItemFinderCount {
                 var idx = ops.FindLastIndex(op =>
                     op.opcode == OpCodes.Callvirt &&
                     op.operand as MethodInfo == AccessTools.PropertyGetter(typeof(GUIComponent), "RectTransform"));
-                
+
                 if (idx == -1)
                 {
                     Log("Failed to patch CreateItemFrame");
                     return ops;
                 }
-                
+
                 // add call to PatchNameText
-                ops.InsertRange(ops.Count - 1, new [] {
+                ops.InsertRange(ops.Count - 1, new[]
+                {
                     new CodeInstruction(OpCodes.Ldarg_0),
-                    //new CodeInstruction(OpCodes.Ldarg_1),
                     ops[idx - 2], // ldloc.0 <closure class>
-                    ops[idx - 1],  // ldfld <nameText>
-                    new CodeInstruction(OpCodes.Call, typeof(MiniMap_CreateItemFrame_Patch).GetMethod(nameof(PatchNameText), BindingFlags.Static | BindingFlags.Public)!)
+                    ops[idx - 1], // ldfld <nameText>
+                    new CodeInstruction(OpCodes.Call,
+                        typeof(MiniMap_CreateItemFrame_Patch).GetMethod(nameof(PatchNameText),
+                            BindingFlags.Static | BindingFlags.Public)!)
                 });
-                
+
                 // removing SizeChanged subscription
                 ops.RemoveRange(idx - 2, 7);
-                
+
                 Log("MiniMap.CreateItemFrame patched");
                 return ops;
             }
@@ -125,7 +130,7 @@ namespace ItemFinderCount {
         private static void UpdateSearchCache(MiniMap miniMap)
         {
             var listBox = miniMap.GetPrivateField<MiniMap, GUIComponent>("searchAutoComplete").GetChild<GUIListBox>();
-            if (listBox?.Content == null) 
+            if (listBox?.Content == null)
                 return;
 
             var prefabsToSearch = listBox.Content.Children
@@ -138,16 +143,17 @@ namespace ItemFinderCount {
                 SearchCache[result.PrefabId] = result;
             }
         }
-        
+
         public static void UpdateSearchItemFrames(MiniMap miniMap)
         {
             var listBox = miniMap.GetPrivateField<MiniMap, GUIComponent>("searchAutoComplete").GetChild<GUIListBox>();
             if (listBox?.Content == null) return;
-            
+
             foreach (var itemFrame in listBox.Content.Children)
             {
                 if (!itemFrame.Visible) continue;
-                if (itemFrame.FindChild(child => child.GetType() == typeof(GUITextBlock), true) is not GUITextBlock nameText)
+                if (itemFrame.FindChild(child => child.GetType() == typeof(GUITextBlock), true) is not GUITextBlock
+                    nameText)
                 {
                     Log("Cannot find GUITextBlock in itemFrame" + itemFrame.UserData);
                     continue;
@@ -164,7 +170,7 @@ namespace ItemFinderCount {
             {
                 return;
             }
-            
+
             if (SearchCache.TryGetValue(prefab.Identifier, out var results) && results.OnSub > 0)
             {
                 var builder = new StringBuilder(" [");
@@ -182,38 +188,44 @@ namespace ItemFinderCount {
                 }
 
                 var additionalString = builder.ToString();
-                
+
                 var additionalWidth = nameText.Font.MeasureString(additionalString);
-                nameText.Text = ToolBox.LimitString(prefab.Name, nameText.Font, nameText.Rect.Width - (int)additionalWidth.X) + additionalString;
+                nameText.Text =
+                    ToolBox.LimitString(prefab.Name, nameText.Font, nameText.Rect.Width - (int)additionalWidth.X) +
+                    additionalString;
             }
             else if (results is { Carried: > 0 })
             {
-                nameText.Text = ToolBox.LimitString($"{prefab.Name} ({results.Carried} carried)", nameText.Font, nameText.Rect.Width);
-            } 
-            else 
+                nameText.Text = ToolBox.LimitString($"{prefab.Name} ({results.Carried} carried)", nameText.Font,
+                    nameText.Rect.Width);
+            }
+            else
             {
                 nameText.Text = ToolBox.LimitString(prefab.Name, nameText.Font, nameText.Rect.Width);
             }
         }
-        
+
         static IReadOnlyCollection<SearchResults> SearchForPrefab(MiniMap miniMap, List<ItemPrefab> searchedPrefabs)
         {
-            if (miniMap == null) 
+            if (miniMap == null)
                 return ArraySegment<SearchResults>.Empty;
 
             var dict = searchedPrefabs.ToDictionary(p => p.Identifier, p => new SearchResults(p.Identifier));
-            
+
             foreach (var it in Item.ItemList)
             {
                 if (!dict.TryGetValue(it.Prefab.Identifier, out var searchedPrefab))
                     continue;
-                
+
                 if (!ReflectionHelper.VisibleOnItemFinder(miniMap, it))
                     continue;
-                
+
                 // ignore hidden items
-                if (it.FindParentInventory(inv => inv is ItemInventory { Owner: Item { HiddenInGame: true }}) is { }) { continue; }
-                
+                if (it.FindParentInventory(inv => inv is ItemInventory { Owner: Item { HiddenInGame: true } }) is { })
+                {
+                    continue;
+                }
+
                 // count carried
                 var characterInventory = it.FindParentInventory(inv => inv is CharacterInventory) as CharacterInventory;
                 if (characterInventory != null)
