@@ -14,7 +14,7 @@ using MiniMap = Barotrauma.Items.Components.MiniMap;
 [assembly: IgnoresAccessChecksTo("Barotrauma")]
 namespace ItemFinderCount {
     
-    class ItemFinderCountMain : ACsMod 
+    class ItemFinderCountMain : IAssemblyPlugin
     {
         // Internal
         private Harmony HarmonyInstance;
@@ -24,15 +24,9 @@ namespace ItemFinderCount {
         // Domain
         private static Dictionary<Identifier, SearchResults> SearchCache = new();
 
-        public ItemFinderCountMain()
+        public void Stop()
         {
-            this.HarmonyInstance = new Harmony(PatchCategoryString);
-            this.HarmonyInstance.PatchAll(typeof(ItemFinderCountMain));
-        }
-
-        public override void Stop()
-        {
-            this.HarmonyInstance.UnpatchAll(PatchCategoryString);
+            this.HarmonyInstance.UnpatchAll();
 
             foreach (var reventAction in RevertActions)
             {
@@ -45,6 +39,28 @@ namespace ItemFinderCount {
                     Log("Error occured while executing ReventAction: " + ex);
                 }
             }
+            RevertActions.Clear();
+            SearchCache.Clear();
+
+        }
+        public void Initialize()
+        {
+            this.HarmonyInstance = new Harmony(PatchCategoryString);
+            this.HarmonyInstance.PatchAll();
+            Log("Initialized");
+        }
+
+        public void OnLoadCompleted()
+        {
+        }
+
+        public void PreInitPatching()
+        {
+        }
+
+        public void Dispose()
+        {
+            Stop();
         }
 
         [HarmonyPatch(typeof(Barotrauma.Items.Components.MiniMap))]
@@ -80,7 +96,7 @@ namespace ItemFinderCount {
                 // add call to PatchNameText
                 ops.InsertRange(ops.Count - 1, new [] {
                     new CodeInstruction(OpCodes.Ldarg_0),
-                    new CodeInstruction(OpCodes.Ldarg_1),
+                    //new CodeInstruction(OpCodes.Ldarg_1),
                     ops[idx - 2], // ldloc.0 <closure class>
                     ops[idx - 1],  // ldfld <nameText>
                     new CodeInstruction(OpCodes.Call, typeof(MiniMap_CreateItemFrame_Patch).GetMethod(nameof(PatchNameText), BindingFlags.Static | BindingFlags.Public)!)
@@ -93,7 +109,7 @@ namespace ItemFinderCount {
                 return ops;
             }
 
-            public static void PatchNameText(MiniMap miniMap, ItemPrefab itemPrefab, GUITextBlock nameText)
+            public static void PatchNameText(ItemPrefab itemPrefab, GUITextBlock nameText)
             {
                 nameText.UserData = itemPrefab;
                 var rectTransformOnSizeChanged = () =>
